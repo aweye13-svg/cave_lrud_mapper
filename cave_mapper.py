@@ -2382,8 +2382,6 @@ class CaveLRUDPlugin:
             pt_sym = QgsPoint3DSymbol()
             if hasattr(pt_sym, 'setShape') and hasattr(QgsPoint3DSymbol, 'Shape'):
                 pt_sym.setShape(QgsPoint3DSymbol.Shape.Sphere)
-            elif hasattr(pt_sym, 'setShape') and hasattr(QgsPoint3DSymbol, 'Sphere'):
-                pt_sym.setShape(QgsPoint3DSymbol.Sphere)
 
             if hasattr(pt_sym, 'setRadius'):
                 pt_sym.setRadius(0.18)
