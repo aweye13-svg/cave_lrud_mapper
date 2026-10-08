@@ -1,0 +1,17 @@
+[general]
+name=Cave LRUD 2D/3D Mapper
+qgisMinimumVersion=3.28
+description=Converts cave survey shots into 2D passage maps, 3D conduits, and vectorized manual sketches with permanent GeoPackage output, profile views, and OBJ export.
+version=1.4.1
+author=Michael Eugene A. Venturillo
+email=aweye13@gmail.com
+about=A speleological survey and subsurface modeling tool for QGIS. Processes tabular LRUD survey measurements into permanent multi-layer GeoPackages (3D conduits, 3D centerlines, 2D footprints, and labeled stations) stored in dedicated project subfolders. Features raster-to-vector extraction of georeferenced manual sketches (PDF, PNG, SVG, TIFF) using background thresholding, survey-centerline buffer masking, interior cavity flood-filling, and Douglas-Peucker simplification. Includes 7 selectable 2D passage plan styles, high-resolution 300 DPI layout and elevation profile exports with 0.25-inch margins, dynamic multi-surveyor management, dedicated plugin menu iconography on a top-level QMenu, interactive live previews, and Wavefront OBJ mesh generation.
+category=Vector
+tags=cave,speleology,lrud,survey,subsurface,3d,mesh,obj,vector,karst,conduit,utm,plan view,elevation profile,cartography,raster vectorizer,georeferenced sketch
+homepage=https://github.com/aweye13-svg/cave_lrud_mapper
+tracker=https://github.com/aweye13-svg/cave_lrud_mapper/issues
+repository=https://github.com/aweye13-svg/cave_lrud_mapper
+icon=icon.svg
+experimental=False
+deprecated=False
+changelog=v1.4.1: Streamlined menu bar layout by consolidating core mapping tools under a dedicated QMenu with brand iconography; fixed syntax and unpack handling during folder generation; finalized georeferenced sketch vectorization for PDF/PNG/SVG/TIFF with alpha-channel support, cavity flood-fill, and Douglas-Peucker simplification; maintained permanent GeoPackage layer persistence and 0.25-inch print layout margins.
