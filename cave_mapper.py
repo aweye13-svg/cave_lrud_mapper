@@ -591,6 +591,7 @@ class CaveLRUDPlugin:
         self.active_passage_layer = None
         self.active_stations_layer = None
         self.active_tube_layer = None
+        self.active_manual_passage_layer = None  # <-- Added
         self.stations = {}
         self.traverse_order = []
         self._is_updating = False
@@ -897,11 +898,13 @@ class CaveLRUDPlugin:
 
         pr.addFeatures(new_features)
 
+        # 6. Save as permanent GeoPackage
         final_disk_layer = self._save_memory_layer_to_disk(
             cleaned_layer, output_path, "Extracted Manual Passage"
         )
         self._apply_2d_style(final_disk_layer, "filled polygons")
         QgsProject.instance().addMapLayer(final_disk_layer)
+        self.active_manual_passage_layer = final_disk_layer  # <-- Set active reference
 
         return final_disk_layer
 
@@ -1594,8 +1597,10 @@ class CaveLRUDPlugin:
 
     def export_edited_csv(self):
         if not self.active_centerline_layer or not self.active_centerline_layer.isValid():
-            QMessageBox.warning(None, "No Active Layer", "Please import and generate a cave survey first.")
-            return
+            recovered = self._recover_session_from_project_layers()
+            if not recovered or not self.active_centerline_layer:
+                QMessageBox.warning(None, "No Active Layer", "Please import a cave survey or load cave layers first.")
+                return
 
         unit_dlg = UnitExportDialog(self.iface.mainWindow())
         if unit_dlg.exec() != QDialog.DialogCode.Accepted:
@@ -1679,13 +1684,142 @@ class CaveLRUDPlugin:
         except Exception as e:
             QMessageBox.critical(None, "Export Error", f"Failed to export CSV:\n{str(e)}")
 
+    def _recover_session_from_project_layers(self):
+        """
+        Detects the specific cave layers highlighted by the user in the Layers panel,
+        matching passage, centerline, stations, and manual sketch layers by their 
+        shared source directory, and rebuilds self.stations and self.traverse_order.
+        """
+        selected_layers = self.iface.layerTreeView().selectedLayers()
+
+        if not selected_layers:
+            return False
+
+        target_dir = None
+        target_centerline = None
+        target_passage = None
+        target_stations = None
+        target_manual = None
+
+        for lyr in selected_layers:
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            src = lyr.source()
+            if lyr.name() == "Cave Centerline 3D":
+                target_centerline = lyr
+                target_dir = os.path.dirname(src)
+                break
+            elif lyr.name().startswith("Cave Passage 2D"):
+                target_passage = lyr
+                target_dir = os.path.dirname(src)
+                break
+            elif lyr.name() == "Cave Stations":
+                target_stations = lyr
+                target_dir = os.path.dirname(src)
+                break
+            elif lyr.name() == "Extracted Manual Passage" or "vector_passage" in lyr.name():
+                target_manual = lyr
+                target_dir = os.path.dirname(src)
+                break
+            elif src:
+                target_dir = os.path.dirname(src)
+
+        all_project_layers = list(QgsProject.instance().mapLayers().values())
+
+        for lyr in (selected_layers + all_project_layers):
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            src = lyr.source()
+            same_dir = (target_dir and os.path.dirname(src) == target_dir) if src else False
+
+            if not target_centerline and lyr.name() == "Cave Centerline 3D" and (same_dir or not target_dir):
+                target_centerline = lyr
+            elif not target_passage and lyr.name().startswith("Cave Passage 2D") and (same_dir or not target_dir):
+                target_passage = lyr
+            elif not target_stations and lyr.name() == "Cave Stations" and (same_dir or not target_dir):
+                target_stations = lyr
+            elif not target_manual and (lyr.name() == "Extracted Manual Passage" or "vector_passage" in lyr.name()) and (same_dir or not target_dir):
+                target_manual = lyr
+
+        if not target_passage or not target_centerline:
+            return False
+
+        self.active_passage_layer = target_passage
+        self.active_centerline_layer = target_centerline
+        self.active_stations_layer = target_stations
+        self.active_manual_passage_layer = target_manual
+        self.stations = {}
+        self.traverse_order = []
+
+        if self.active_stations_layer and self.active_stations_layer.isValid():
+            st_fields = self.active_stations_layer.fields().names()
+            for feat in self.active_stations_layer.getFeatures():
+                st_name = feat["station"]
+                node_type = feat["node_type"] if "node_type" in st_fields else "Center"
+                if node_type == "Center" and st_name:
+                    geom = feat.geometry()
+                    pt_3d = geom.constGet() if hasattr(geom, 'constGet') else None
+                    if pt_3d is not None and hasattr(pt_3d, 'z'):
+                        px, py, pz = pt_3d.x(), pt_3d.y(), pt_3d.z()
+                    else:
+                        pt_2d = geom.asPoint()
+                        px, py = pt_2d.x(), pt_2d.y()
+                        pz = float(feat["alt_m"]) if "alt_m" in st_fields and feat["alt_m"] not in (None, '') else 0.0
+
+                    self.stations[str(st_name)] = (
+                        px, py, pz,
+                        DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M,
+                        0.0, 0.0
+                    )
+
+        cl_fields = self.active_centerline_layer.fields().names()
+        for feat in self.active_centerline_layer.getFeatures():
+            u = str(feat["from_st"])
+            v = str(feat["to_st"])
+            if u not in self.traverse_order:
+                self.traverse_order.append(u)
+            if v not in self.traverse_order:
+                self.traverse_order.append(v)
+
+            geom = feat.geometry()
+            line_geom = geom.constGet() if hasattr(geom, 'constGet') else None
+
+            if line_geom is not None and hasattr(line_geom, 'pointN') and line_geom.numPoints() >= 2:
+                p1 = line_geom.pointN(0)
+                p2 = line_geom.pointN(1)
+                p1_tuple = (p1.x(), p1.y(), p1.z())
+                p2_tuple = (p2.x(), p2.y(), p2.z())
+            else:
+                polyline = geom.asPolyline()
+                p1_tuple = (polyline[0].x(), polyline[0].y(), 0.0) if len(polyline) >= 2 else (0.0, 0.0, 0.0)
+                p2_tuple = (polyline[1].x(), polyline[1].y(), 0.0) if len(polyline) >= 2 else (0.0, 0.0, 0.0)
+
+            bearing_val = float(feat["bearing_deg"]) if "bearing_deg" in cl_fields and feat["bearing_deg"] not in (None, '') else 0.0
+            inc_val = float(feat["inc_deg"]) if "inc_deg" in cl_fields and feat["inc_deg"] not in (None, '') else 0.0
+            az_rad = math.radians(bearing_val)
+            cl_rad = math.radians(inc_val)
+
+            if u not in self.stations:
+                self.stations[u] = (p1_tuple[0], p1_tuple[1], p1_tuple[2], DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, az_rad, cl_rad)
+            if v not in self.stations:
+                self.stations[v] = (p2_tuple[0], p2_tuple[1], p2_tuple[2], DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, DEFAULT_RADIUS_M, az_rad, cl_rad)
+
+        return len(self.traverse_order) > 0
+
     def export_map_image(self):
-        if not self.active_passage_layer or not self.active_passage_layer.isValid():
-            QMessageBox.warning(
-                None, "No Layers",
-                "Please import cave data before exporting map images."
-            )
-            return
+        selected_layers = self.iface.layerTreeView().selectedLayers()
+        if selected_layers:
+            self._recover_session_from_project_layers()
+
+        if not self.active_passage_layer or not self.active_passage_layer.isValid() or not self.stations:
+            recovered = self._recover_session_from_project_layers()
+            if not recovered:
+                QMessageBox.warning(
+                    None, "No Cave Selected",
+                    "Please highlight or select at least one layer from the cave you want to view "
+                    "(e.g., its Passage 2D, Centerline 3D, or Stations layer) in the Layers panel."
+                )
+                return
 
         dlg = MapExportDialog(self.iface.mainWindow())
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -1729,6 +1863,15 @@ class CaveLRUDPlugin:
                     "visible": True
                 }
             }
+
+            # Add Extracted Manual Passage if present for this cave
+            if self.active_manual_passage_layer and self.active_manual_passage_layer.isValid():
+                layer_items["manual_passage"] = {
+                    "name": "Extracted Manual Passage",
+                    "layer": self.active_manual_passage_layer,
+                    "visible": True
+                }
+
             for idx, ly in enumerate(underlay_layers):
                 layer_items[f"underlay_{idx}"] = {
                     "name": ly.name(),
@@ -1786,22 +1929,28 @@ class CaveLRUDPlugin:
         font_family = export_settings.get("font_family", "Arial")
         font_size = int(export_settings.get("font_size", 11))
 
+        # 1. Calculate map frame bounds strictly from survey stations and centerline in project CRS
+        target_crs = project.crs()
         global_extent = QgsRectangle()
-        base_cave_layers = [
-            self.active_passage_layer,
-            self.active_centerline_layer,
-            self.active_stations_layer
-        ]
 
-        for lyr in base_cave_layers:
+        # Reliable survey vector layers
+        anchor_layers = [self.active_passage_layer, self.active_centerline_layer, self.active_stations_layer]
+
+        for lyr in anchor_layers:
             if lyr and lyr.isValid() and lyr.featureCount() > 0:
                 lyr_ext = lyr.extent()
                 if not lyr_ext.isNull() and not lyr_ext.isEmpty():
+                    # Transform layer extent into project CRS if they differ
+                    if lyr.crs() != target_crs:
+                        transform = QgsCoordinateTransform(lyr.crs(), target_crs, project)
+                        lyr_ext = transform.transformBoundingBox(lyr_ext)
+
                     if global_extent.isNull() or global_extent.isEmpty():
                         global_extent = QgsRectangle(lyr_ext)
                     else:
                         global_extent.combineExtentWith(lyr_ext)
 
+        # Fallback to stations dictionary if extent is still invalid
         if global_extent.isNull() or global_extent.isEmpty():
             if self.stations:
                 xs = [pt[0] for pt in self.stations.values()]
@@ -1819,11 +1968,13 @@ class CaveLRUDPlugin:
         cave_w = global_extent.width()
         cave_h = global_extent.height()
 
+        # 2. Dynamic page orientation
         is_tall = cave_h > (cave_w * 0.95)
         page = layout.pageCollection().page(0)
         page_w, page_h = (210.0, 297.0) if is_tall else (297.0, 210.0)
         page.setPageSize(QgsLayoutSize(page_w, page_h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
+        # 3. Strict 0.25-inch (6.35 mm) Margin Frame
         margin_in_mm = 6.35
         map_x = margin_in_mm
         map_y = margin_in_mm
@@ -1831,8 +1982,17 @@ class CaveLRUDPlugin:
         map_h = page_h - (2.0 * margin_in_mm)
 
         map_item = QgsLayoutItemMap(layout)
+        map_item.setCrs(target_crs)
         map_item.attemptMove(QgsLayoutPoint(map_x, map_y, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         map_item.attemptResize(QgsLayoutSize(map_w, map_h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+
+        # 4. Layer Ordering: include manual passage beneath survey stations and centerline
+        base_cave_layers = [ly for ly in [
+            self.active_manual_passage_layer,
+            self.active_passage_layer,
+            self.active_centerline_layer,
+            self.active_stations_layer
+        ] if ly and ly.isValid()]
 
         if active_layers is not None:
             ordered_layers = (
@@ -1844,6 +2004,7 @@ class CaveLRUDPlugin:
 
         map_item.setLayers([ly for ly in ordered_layers if ly is not None])
 
+        # 5. Fit & Buffer (25% padding)
         center_x = global_extent.center().x()
         center_y = global_extent.center().y()
         padded_w = cave_w * 1.25
@@ -1865,6 +2026,7 @@ class CaveLRUDPlugin:
         map_item.setFrameEnabled(True)
         layout.addLayoutItem(map_item)
 
+        # 6. Metadata Title Card
         metadata_lines = [f"{cave_name or 'Unnamed Cave'}"]
         if area:
             metadata_lines.append(f"Area: {area}")
@@ -1902,6 +2064,7 @@ class CaveLRUDPlugin:
         )
         layout.addLayoutItem(title_label)
 
+        # 7. Scale Ratio Label
         calc_scale = int(round(map_item.scale(), -1))
         scale_txt_label = QgsLayoutItemLabel(layout)
         scale_txt_label.setText(f"Scale 1:{calc_scale:,}")
@@ -1915,6 +2078,7 @@ class CaveLRUDPlugin:
         )
         layout.addLayoutItem(scale_txt_label)
 
+        # 8. Scale Bar
         scalebar = QgsLayoutItemScaleBar(layout)
         scalebar.setStyle("Single Box")
         scalebar.setUnits(Qgis.DistanceUnit.Meters)
@@ -1929,6 +2093,7 @@ class CaveLRUDPlugin:
         )
         layout.addLayoutItem(scalebar)
 
+        # 9. North Arrow
         north_arrow = QgsLayoutItemPicture(layout)
         default_svg = ":/images/north_arrows/layout_default_north_arrow.svg"
         north_arrow.setPicturePath(default_svg)
@@ -1939,6 +2104,7 @@ class CaveLRUDPlugin:
         north_arrow.setLinkedMap(map_item)
         layout.addLayoutItem(north_arrow)
 
+        # 10. Export Image
         exporter = QgsLayoutExporter(layout)
         settings = QgsLayoutExporter.ImageExportSettings()
         settings.dpi = 300
