@@ -1,8 +1,6 @@
 import csv
 import math
 import os
-import random
-import re
 import shutil
 import tempfile
 
@@ -149,7 +147,9 @@ class PlanStyleDialog(QDialog):
         layout_choice.addWidget(self.combo_style)
         layout.addLayout(layout_choice)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -180,7 +180,9 @@ class UnitExportDialog(QDialog):
         layout_angle.addWidget(self.combo_angle)
         layout.addLayout(layout_angle)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -236,7 +238,9 @@ class VectorizeRasterDialog(QDialog):
         layout_buff.addWidget(self.spin_buff)
         layout.addLayout(layout_buff)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -311,19 +315,21 @@ class MapExportDialog(QDialog):
                 item = QListWidgetItem(
                     f"[{'Vector' if isinstance(layer, QgsVectorLayer) else 'Raster'}] {layer.name()}"
                 )
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.Unchecked)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Unchecked)
                 self.list_underlays.addItem(item)
                 self.underlay_layers[item.text()] = layer
 
         if not self.underlay_layers:
             no_item = QListWidgetItem("No external vector/raster layers in project")
-            no_item.setFlags(Qt.NoItemFlags)
+            no_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.list_underlays.addItem(no_item)
 
         main_layout.addWidget(self.list_underlays)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
@@ -362,7 +368,7 @@ class MapExportDialog(QDialog):
         selected_underlays = []
         for i in range(self.list_underlays.count()):
             item = self.list_underlays.item(i)
-            if item.checkState() == Qt.Checked and item.text() in self.underlay_layers:
+            if item.checkState() == Qt.CheckState.Checked and item.text() in self.underlay_layers:
                 selected_underlays.append(self.underlay_layers[item.text()])
 
         all_surveyors = []
@@ -423,7 +429,7 @@ class ImagePreviewDialog(QDialog):
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setStyleSheet("background-color: #2b2b2b;")
         self.lbl_image = QLabel()
-        self.lbl_image.setAlignment(Qt.AlignCenter)
+        self.lbl_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.lbl_image)
         body_layout.addWidget(self.scroll_area, stretch=4)
 
@@ -535,7 +541,9 @@ class ImagePreviewDialog(QDialog):
             return
         new_size = self.original_pixmap.size() * self.scale_factor
         scaled = self.original_pixmap.scaled(
-            new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            new_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
         )
         self.lbl_image.setPixmap(scaled)
         self.lbl_image.adjustSize()
@@ -686,16 +694,16 @@ class CaveLRUDPlugin:
                 "Overwrite Existing Files?",
                 f"Output directory already exists:\n{output_folder}\n\n"
                 f"Existing cave layers and 3D OBJ will be replaced. Do you want to overwrite?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
             )
-            if reply != QMessageBox.Yes:
+            if reply != QMessageBox.StandardButton.Yes:
                 return
 
         os.makedirs(output_folder, exist_ok=True)
 
         style_dlg = PlanStyleDialog(self.iface.mainWindow())
-        if style_dlg.exec_() != QDialog.Accepted:
+        if style_dlg.exec() != QDialog.DialogCode.Accepted:
             return
         chosen_style = style_dlg.get_style()
 
@@ -727,7 +735,7 @@ class CaveLRUDPlugin:
             return
 
         dlg = VectorizeRasterDialog(rasters, self.iface.mainWindow())
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         layer, threshold_val, simpl_tol, buff_margin = dlg.get_data()
@@ -1101,7 +1109,6 @@ class CaveLRUDPlugin:
                 t = float(s) / float(sub_segs)
                 base_x = p_start.x() + vx * t
                 base_y = p_start.y() + vy * t
-                # Deterministic pseudo-noise: replaces random.uniform to pass security audits
                 pseudo_jitter = (math.sin(t * 13.0 * math.pi + seed_val + edge_id) * 0.15) * max_scallop
                 offset = math.sin(t * math.pi * 3.0) * (max_scallop * 0.7) + pseudo_jitter
                 edge_pts.append(QgsPointXY(base_x + ux * offset, base_y + uy * offset))
@@ -1174,7 +1181,7 @@ class CaveLRUDPlugin:
 
     def _enable_station_labels(self, layer, field_name="station"):
         text_format = QgsTextFormat()
-        text_format.setFont(QFont("Arial", 10, QFont.Bold))
+        text_format.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         text_format.setColor(QColor(20, 20, 20))
 
         buffer_settings = QgsTextBufferSettings()
@@ -1187,7 +1194,7 @@ class CaveLRUDPlugin:
         pal_settings.setFormat(text_format)
         pal_settings.fieldName = field_name
         pal_settings.isExpression = False
-        pal_settings.placement = QgsPalLayerSettings.AroundPoint
+        pal_settings.placement = QgsPalLayerSettings.Placement.AroundPoint
 
         layer.setLabeling(QgsVectorLayerSimpleLabeling(pal_settings))
         layer.setLabelsEnabled(True)
@@ -1196,7 +1203,7 @@ class CaveLRUDPlugin:
         options = QgsVectorFileWriter.SaveVectorOptions()
         options.driverName = "GPKG"
         options.layerName = layer_name
-        options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteFile
+        options.actionOnExistingFile = QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
 
         transform_context = QgsProject.instance().transformContext()
         res = QgsVectorFileWriter.writeAsVectorFormatV3(
@@ -1208,7 +1215,7 @@ class CaveLRUDPlugin:
         error = res[0]
         error_msg = res[1]
 
-        if error != QgsVectorFileWriter.NoError:
+        if error != QgsVectorFileWriter.WriterError.NoError:
             raise RuntimeError(f"Failed to save layer '{layer_name}' to disk: {error_msg}")
 
         disk_layer = QgsVectorLayer(target_path, layer_name, "ogr")
@@ -1504,7 +1511,7 @@ class CaveLRUDPlugin:
                 layer.setRenderer(QgsSingleSymbolRenderer(sym))
 
         except Exception as e:
-            QgsMessageLog.logMessage(f"Style assignment note: {str(e)}", "CaveLRUD", Qgis.Info)
+            QgsMessageLog.logMessage(f"Style assignment note: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
 
     def _on_centerline_geometry_changed(self, fid, geometry):
         if self._is_updating:
@@ -1591,7 +1598,7 @@ class CaveLRUDPlugin:
             return
 
         unit_dlg = UnitExportDialog(self.iface.mainWindow())
-        if unit_dlg.exec_() != QDialog.Accepted:
+        if unit_dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         dist_unit, angle_unit = unit_dlg.get_units()
@@ -1681,7 +1688,7 @@ class CaveLRUDPlugin:
             return
 
         dlg = MapExportDialog(self.iface.mainWindow())
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         cave_name, area, surveyors, view_mode, underlay_layers = dlg.get_data()
@@ -1736,7 +1743,7 @@ class CaveLRUDPlugin:
                 title_desc=f"{cave_name} ({view_mode})",
                 parent=self.iface.mainWindow()
             )
-            if preview_win.exec_() != QDialog.Accepted:
+            if preview_win.exec() != QDialog.DialogCode.Accepted:
                 return
 
             default_name = (
@@ -1815,7 +1822,7 @@ class CaveLRUDPlugin:
         is_tall = cave_h > (cave_w * 0.95)
         page = layout.pageCollection().page(0)
         page_w, page_h = (210.0, 297.0) if is_tall else (297.0, 210.0)
-        page.setPageSize(QgsLayoutSize(page_w, page_h, QgsUnitTypes.LayoutMillimeters))
+        page.setPageSize(QgsLayoutSize(page_w, page_h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
         margin_in_mm = 6.35
         map_x = margin_in_mm
@@ -1824,8 +1831,8 @@ class CaveLRUDPlugin:
         map_h = page_h - (2.0 * margin_in_mm)
 
         map_item = QgsLayoutItemMap(layout)
-        map_item.attemptMove(QgsLayoutPoint(map_x, map_y, QgsUnitTypes.LayoutMillimeters))
-        map_item.attemptResize(QgsLayoutSize(map_w, map_h, QgsUnitTypes.LayoutMillimeters))
+        map_item.attemptMove(QgsLayoutPoint(map_x, map_y, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
+        map_item.attemptResize(QgsLayoutSize(map_w, map_h, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
 
         if active_layers is not None:
             ordered_layers = (
@@ -1871,7 +1878,7 @@ class CaveLRUDPlugin:
 
         title_label = QgsLayoutItemLabel(layout)
         title_label.setText(full_text)
-        title_font = QFont(font_family, font_size, QFont.Bold)
+        title_font = QFont(font_family, font_size, QFont.Weight.Bold)
         title_label.setFont(title_font)
 
         fm = QFontMetrics(title_font)
@@ -1889,22 +1896,22 @@ class CaveLRUDPlugin:
         title_label.setMarginX(2.5)
         title_label.setMarginY(2.5)
 
-        title_label.attemptResize(QgsLayoutSize(card_w_mm, card_h_mm, QgsUnitTypes.LayoutMillimeters))
+        title_label.attemptResize(QgsLayoutSize(card_w_mm, card_h_mm, QgsUnitTypes.LayoutUnit.LayoutMillimeters))
         title_label.attemptMove(
-            QgsLayoutPoint(map_x + 4.0, map_y + 4.0, QgsUnitTypes.LayoutMillimeters)
+            QgsLayoutPoint(map_x + 4.0, map_y + 4.0, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
         )
         layout.addLayoutItem(title_label)
 
         calc_scale = int(round(map_item.scale(), -1))
         scale_txt_label = QgsLayoutItemLabel(layout)
         scale_txt_label.setText(f"Scale 1:{calc_scale:,}")
-        scale_txt_label.setFont(QFont(font_family, max(7, font_size - 2), QFont.Bold))
+        scale_txt_label.setFont(QFont(font_family, max(7, font_size - 2), QFont.Weight.Bold))
         scale_txt_label.setBackgroundEnabled(True)
         scale_txt_label.setBackgroundColor(QColor(255, 255, 255, 225))
         scale_txt_label.setMarginX(1.5)
         scale_txt_label.adjustSizeToText()
         scale_txt_label.attemptMove(
-            QgsLayoutPoint(map_x + 4.0, map_y + map_h - 18.0, QgsUnitTypes.LayoutMillimeters)
+            QgsLayoutPoint(map_x + 4.0, map_y + map_h - 18.0, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
         )
         layout.addLayoutItem(scale_txt_label)
 
@@ -1918,7 +1925,7 @@ class CaveLRUDPlugin:
         scalebar.setBackgroundEnabled(True)
         scalebar.setBackgroundColor(QColor(255, 255, 255, 225))
         scalebar.attemptMove(
-            QgsLayoutPoint(map_x + 4.0, map_y + map_h - 12.0, QgsUnitTypes.LayoutMillimeters)
+            QgsLayoutPoint(map_x + 4.0, map_y + map_h - 12.0, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
         )
         layout.addLayoutItem(scalebar)
 
@@ -1927,7 +1934,7 @@ class CaveLRUDPlugin:
         north_arrow.setPicturePath(default_svg)
         north_arrow.setRect(QRectF(0, 0, 18, 18))
         north_arrow.attemptMove(
-            QgsLayoutPoint(map_x + map_w - 22.0, map_y + 4.0, QgsUnitTypes.LayoutMillimeters)
+            QgsLayoutPoint(map_x + map_w - 22.0, map_y + 4.0, QgsUnitTypes.LayoutUnit.LayoutMillimeters)
         )
         north_arrow.setLinkedMap(map_item)
         layout.addLayoutItem(north_arrow)
@@ -1937,7 +1944,7 @@ class CaveLRUDPlugin:
         settings.dpi = 300
         result = exporter.exportToImage(output_png, settings)
 
-        if result != QgsLayoutExporter.Success:
+        if result != QgsLayoutExporter.ExportResult.Success:
             raise RuntimeError(f"QGIS Layout Exporter returned status: {result}")
 
     def _export_profile_view_image(self, cave_name, area, surveyors, output_png, export_settings=None):
@@ -2007,15 +2014,15 @@ class CaveLRUDPlugin:
             py = pad_top + (max_y - cy) * scale_y
             return QPointF(px, py)
 
-        image = QImage(img_w, img_h, QImage.Format_ARGB32)
+        image = QImage(img_w, img_h, QImage.Format.Format_ARGB32)
         image.fill(QColor(255, 255, 255))
 
         painter = QPainter(image)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
-        grid_pen = QPen(QColor(230, 230, 230), 2, Qt.DashLine)
-        axis_pen = QPen(QColor(60, 60, 60), 3, Qt.SolidLine)
+        grid_pen = QPen(QColor(230, 230, 230), 2, Qt.PenStyle.DashLine)
+        axis_pen = QPen(QColor(60, 60, 60), 3, Qt.PenStyle.SolidLine)
         font_axis = QFont(font_family, max(10, font_size + 5))
         painter.setFont(font_axis)
 
@@ -2068,7 +2075,7 @@ class CaveLRUDPlugin:
             painter.drawLine(pt1, pt2)
 
         node_brush = QBrush(QColor(220, 20, 20))
-        font_st = QFont(font_family, max(12, font_size + 8), QFont.Bold)
+        font_st = QFont(font_family, max(12, font_size + 8), QFont.Weight.Bold)
         painter.setFont(font_st)
 
         for d_val, z_val, _, _, st_name in prof_pts:
@@ -2080,11 +2087,11 @@ class CaveLRUDPlugin:
             painter.setPen(QColor(20, 20, 20))
             painter.drawText(
                 QRectF(pt.x() + 15, pt.y() - 35, 420, 42),
-                Qt.TextWordWrap,
+                int(Qt.TextFlag.TextWordWrap),
                 f"Stn {st_name} ({z_val:.1f}m)"
             )
 
-        font_title = QFont(font_family, max(18, font_size * 2 + 8), QFont.Bold)
+        font_title = QFont(font_family, max(18, font_size * 2 + 8), QFont.Weight.Bold)
         painter.setFont(font_title)
         painter.setPen(QColor(30, 30, 30))
         painter.drawText(pad_left, margin_quarter_inch + 50, f"{cave_name} — Extended Elevation Profile")
@@ -2105,16 +2112,16 @@ class CaveLRUDPlugin:
         for meta_line in profile_meta:
             painter.drawText(
                 QRectF(pad_left, meta_y - 20, max_meta_width, 30),
-                Qt.TextWordWrap,
+                int(Qt.TextFlag.TextWordWrap),
                 meta_line
             )
             meta_y += max(30, font_size * 3)
 
         painter.setPen(QPen(QColor(50, 50, 50), 4))
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(pad_left, pad_top, plot_w, plot_h)
 
-        faint_border_pen = QPen(QColor(210, 210, 210), 2, Qt.DashLine)
+        faint_border_pen = QPen(QColor(210, 210, 210), 2, Qt.PenStyle.DashLine)
         painter.setPen(faint_border_pen)
         painter.drawRect(
             margin_quarter_inch,
@@ -2186,7 +2193,7 @@ class CaveLRUDPlugin:
             tube_renderer.setSymbol(tube_sym)
             tube_layer.setRenderer3D(tube_renderer)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Tube 3D config note: {str(e)}", "CaveLRUD", Qgis.Info)
+            QgsMessageLog.logMessage(f"Tube 3D config note: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
 
         try:
             cl_sym = QgsLine3DSymbol()
@@ -2203,12 +2210,15 @@ class CaveLRUDPlugin:
             cl_renderer.setSymbol(cl_sym)
             centerline_layer.setRenderer3D(cl_renderer)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Centerline 3D config note: {str(e)}", "CaveLRUD", Qgis.Info)
+            QgsMessageLog.logMessage(f"Centerline 3D config note: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
 
         try:
             pt_sym = QgsPoint3DSymbol()
-            if hasattr(pt_sym, 'setShape') and hasattr(QgsPoint3DSymbol, 'Sphere'):
+            if hasattr(pt_sym, 'setShape') and hasattr(QgsPoint3DSymbol, 'Shape'):
+                pt_sym.setShape(QgsPoint3DSymbol.Shape.Sphere)
+            elif hasattr(pt_sym, 'setShape') and hasattr(QgsPoint3DSymbol, 'Sphere'):
                 pt_sym.setShape(QgsPoint3DSymbol.Sphere)
+
             if hasattr(pt_sym, 'setRadius'):
                 pt_sym.setRadius(0.18)
 
@@ -2220,7 +2230,7 @@ class CaveLRUDPlugin:
             pt_renderer.setSymbol(pt_sym)
             stations_layer.setRenderer3D(pt_renderer)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Station 3D config note: {str(e)}", "CaveLRUD", Qgis.Info)
+            QgsMessageLog.logMessage(f"Station 3D config note: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
 
     def _create_material(self, diffuse, specular=QColor(255, 255, 255)):
         try:
@@ -2252,11 +2262,11 @@ class CaveLRUDPlugin:
                     terrain.setCrs(QgsProject.instance().crs())
                     map_settings.setTerrainGenerator(terrain)
                 except Exception as e:
-                    QgsMessageLog.logMessage(f"Terrain generator note: {str(e)}", "CaveLRUD", Qgis.Info)
+                    QgsMessageLog.logMessage(f"Terrain generator note: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
 
                 extent = layers[0].extent()
                 for ly in layers:
                     extent.combineExtentWith(ly.extent())
                 canvas3d.setViewFrom2DExtent(extent)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Could not auto-open 3D Canvas: {str(e)}", "CaveLRUD", Qgis.Info)
+            QgsMessageLog.logMessage(f"Could not auto-open 3D Canvas: {str(e)}", "CaveLRUD", Qgis.MessageLevel.Info)
